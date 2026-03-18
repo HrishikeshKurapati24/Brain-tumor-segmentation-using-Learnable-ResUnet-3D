@@ -1,0 +1,86 @@
+Paper 3: Tumor Segmentation in Brain MR Images Using Res-UNet with Multimodal Fusion (Yin et al., 2025)
+
+Problem Statement
+
+Manual segmentation of brain tumors in MRI scans is labor-intensive, prone to inter-observer variability, and limited in consistency. Traditional U-Net models, while effective, face degradation problems with deeper networks (vanishing gradients) and do not fully exploit complementary information across multiple MRI modalities. This paper proposes a Res-UNet with multimodal fusion to overcome these limitations and improve segmentation accuracy.
+
+⸻
+
+Proposed Method
+
+The model integrates:
+	1.	Multimodal Fusion:
+	•	Uses four MRI modalities (T1, T2, T1ce, FLAIR).
+	•	Assigns weights to each modality based on individual Dice scores, enabling weighted fusion of modalities.
+	•	Ensures richer and complementary input representations for segmentation.
+	2.	Res-UNet Architecture:
+	•	Encoder-decoder structure similar to U-Net.
+	•	Residual modules in the encoder mitigate vanishing gradients and allow deeper feature extraction.
+	•	Skip connections fuse shallow local detail features with deeper semantic features.
+	•	Decoder employs transposed convolutions for upsampling.
+	3.	Multi-Class Focal Loss Function:
+	•	Balances class imbalance across tumor subregions (necrosis, edema, enhancing, non-enhancing).
+	•	Increases focus on harder-to-segment samples.
+
+⸻
+
+Dataset
+	•	BraTS 2015 dataset
+	•	Total: 274 cases
+	•	Training: 250 cases (HGG + LGG)
+	•	Test: 24 cases
+	•	Tumor regions segmented into 4 categories: necrosis, edema, non-enhancing tumor, enhancing tumor.
+	•	Patch-based training with 4×128×128×128 crops.
+
+⸻
+
+Evaluation Metrics
+	•	Dice Similarity Coefficient (DSC)
+	•	Sensitivity and Specificity
+	•	Positive Predictive Value (PPV)
+	•	Hausdorff Distance (HD) – measures spatial boundary similarity.
+
+⸻
+
+Experimental Results
+
+Cross-validation (average results):
+	•	Dice: 90.62%
+	•	PPV: 87.89%
+	•	Sensitivity: 86.72%
+	•	HD: 2.25
+
+Comparison with other models:
+    Model                   DSC             PPV             Sensitivity
+    U-Net                   0.61            0.62            0.63
+    Multimodal Fusion U-Net 0.75            0.74            0.86
+    Dual-Channel U-Net      0.84            0.85            0.81
+    Res-UNet(proposed)      0.86            0.86            0.87
+
+⸻    
+
+Ablation studies:
+	•	Adding more modalities improved segmentation quality (best results with all 4 modalities).
+	•	Weighted fusion outperformed unweighted fusion (DSC: 86.75% vs. 85.23%).
+
+⸻
+
+Strengths
+	•	Multimodal Fusion: Effectively leverages complementary MRI modalities.
+	•	Residual Modules: Solve vanishing gradient issues and allow deeper networks.
+	•	Balanced Training: Multi-class focal loss improves robustness to class imbalance.
+	•	Improved Accuracy: Outperforms standard U-Net and multimodal fusion variants.
+
+⸻
+
+Limitations
+	•	Dataset relatively small (BraTS 2015, only 274 samples).
+	•	Evaluation limited to a single dataset; generalizability to larger and more diverse datasets remains untested.
+	•	Focused on 2D/patch-based training, not full 3D volumetric segmentation.
+	•	Future work suggested: incorporate clinical metadata (e.g., genetic data, patient history) for enhanced diagnostic support.
+
+⸻
+
+Key Takeaway
+
+The proposed Res-UNet with multimodal weighted fusion achieves state-of-the-art accuracy on BraTS 2015, outperforming U-Net and its variants. By combining residual connections, multimodal fusion, and focal loss, the model provides more precise tumor boundary delineation, offering strong potential for clinical applications.

@@ -1,0 +1,15 @@
+Category,Metric,Value,Notes
+Primary,Macro Tumor Dice,0.8291546352948667,Average of tumor classes 1-4
+BraTS,Whole Tumor,0.8562869929410658,Standard BraTS challenge metric
+BraTS,Tumor Core,0.9055737714660695,Standard BraTS challenge metric
+BraTS,Enhancing Tumor,0.8430419837590841,Standard BraTS challenge metric
+Per-Class Dice,Background,0.9854448479544955,Class 0
+Per-Class Dice,Necrosis,0.7348621166806599,Class 1
+Per-Class Dice,Edema,0.7387144407397224,Class 2
+Per-Class Dice,Non-Enhancing,1.0,Class 3
+Per-Class Dice,Enhancing,0.8430419837590841,Class 4
+Per-Class IoU,Background,0.971480986916643,Class 0
+Per-Class IoU,Necrosis,0.6405767633234393,Class 1
+Per-Class IoU,Edema,0.6032825601645636,Class 2
+Per-Class IoU,Non-Enhancing,1.0,Class 3
+Per-Class IoU,Enhancing,0.7458744597726082,Class 4

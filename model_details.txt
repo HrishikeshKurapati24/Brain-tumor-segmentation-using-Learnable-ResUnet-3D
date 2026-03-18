@@ -1,0 +1,326 @@
+============================================================
+Full_ResUnet3D_Pipeline – Model Details
+============================================================
+
+1) Training Configuration (TrainConfig)
+---------------------------------------
+
+TrainConfig is a dataclass that centralizes all hyperparameters and paths, tuned for Kaggle T4 runtime.
+
+Data & Paths:
+- data_root: "" (set at runtime by setup_data_paths for BraTS 2021)
+- output_dir: "./outputs"
+- checkpoint_dir: "./checkpoints"
+
+Core Hyperparameters:
+- batch_size: 4
+- learning_rate: 3e-4
+- epochs: 25
+- patch_size: (98, 98, 98)
+- num_workers: 2
+- gradient_accumulation_steps: 4
+
+Data Split / Sampling:
+- train_split_ratio: 0.8 (clamped to [0.7, 0.95] in __post_init__)
+- val_split_ratio: 0.2 (computed as 1 - train_split_ratio)
+- train_patches_per_case: 12
+- val_patches_per_case: 4
+- tumor_centric_ratio: 0.8
+- class_aware_sampling: True
+- minority_class_ratio: 0.3
+
+Model Config:
+- base_filters: 16
+- depth: 4
+- num_classes: 5  (background, necrosis, edema, non-enhancing, enhancing)
+- use_instance_norm: True (InstanceNorm3d by default; BatchNorm3d used when False)
+- use_learnable_fusion: True (LearnableFusionResUNet3D by default)
+
+Dropout Config:
+- dropout_rate_deep: 0.25
+- dropout_rate_shallow: 0.1
+- dropout_enabled: True
+
+Training Control:
+- optimizer_type: "AdamW"
+- scheduler_type: "CosineAnnealingLR"
+- gradient_clip: 0.5
+
+Loss Config:
+- dice_weight: 0.4
+- focal_weight: 0.6
+- focal_alpha: [0.1, 2.0, 2.0, 3.0, 3.0]  (bg, necrosis, edema, non-enh, enh)
+- focal_gamma: 2.0
+
+Evaluation:
+- eval_batches: 12
+- use_center_crop_eval: True
+
+__post_init__ behavior:
+- Fills in focal_alpha default if None.
+- Clamps train_split_ratio to [0.7, 0.95] and recomputes val_split_ratio.
+- Ensures output_dir and checkpoint_dir exist.
+
+
+2) Core Architecture: ResUNet3D
+-------------------------------
+
+Class: ResUNet3D (Cell “Res-UNet 3D Architecture”)
+
+Purpose:
+- 3D residual U-Net for brain tumor segmentation on multimodal MRI.
+
+High-level architecture:
+- Encoder:
+  - 4 levels (depth = 4) with filters:
+    - Level 0: 16
+    - Level 1: 32
+    - Level 2: 64
+    - Level 3: 128
+  - Bottleneck: 256 filters.
+- Decoder:
+  - 4 levels mirroring the encoder, with skip connections from encoder to decoder at each level.
+- Output:
+  - Final Conv3d to num_classes = 5.
+  - No softmax in the model; softmax/log-softmax is applied in the loss or metrics.
+
+Normalization and Residual Blocks:
+- Uses InstanceNorm3d (if use_instance_norm=True) for stable training with small batch size.
+- Residual blocks are built from Conv3d + Norm3d + ReLU with skip connections.
+- Encoder and decoder both use residual blocks at each level.
+
+Dropout structure:
+- Shallow levels (1–2):
+  - dropout_rate_shallow (config default: 0.1) or 0.0 depending on variant.
+- Deeper levels (3–4) and bottleneck:
+  - dropout_rate_deep (config default: 0.25).
+- Implemented as Dropout3d layers integrated into residual blocks at deeper levels.
+
+Input/Output:
+- in_channels:
+  - 1 when used behind LearnableFusionResUNet3D (fused modality channel).
+  - 4 when used as a plain multimodal backbone without fusion wrapper (e.g., in some ablation settings).
+- num_classes: 5 (background + 4 tumor classes).
+- Output shape: [B, 5, D, H, W] logits.
+
+
+3) Learnable Multimodal Fusion: LearnableFusionResUNet3D
+--------------------------------------------------------
+
+Class: LearnableFusionResUNet3D (Cell “Learnable Fusion Module”)
+
+Goal:
+- Learn modality-specific fusion weights for the four MRI modalities:
+  - T1, T1ce, T2, FLAIR.
+- Replace simple mean fusion with learnable, data-driven weights.
+
+Key components:
+- num_modalities: 4.
+- fusion_weights: nn.Parameter of shape [4].
+  - Initialized as zeros (log-scale), passed through softmax so that:
+    - weights are positive.
+    - sum to 1 across modalities.
+
+Fusion mechanism:
+- Input: x with shape [B, 4, D, H, W].
+- Process:
+  - Compute softmax over fusion_weights to get normalized weights w.
+  - Fused volume: sum_m w[m] * x[:, m, ...] to produce a single-channel fused input [B, 1, D, H, W].
+
+Backbone:
+- backbone: ResUNet3D(
+    in_channels=1,
+    num_classes = config.num_classes (5),
+    base_filters = 16,
+    depth = 4,
+    use_instance_norm = True/False from config,
+    dropout_rate_deep = config.dropout_rate_deep,
+    dropout_rate_shallow = config.dropout_rate_shallow
+  )
+- Forward pass:
+  - Fuse modalities as described.
+  - Pass fused volume to ResUNet3D backbone.
+  - Return segmentation logits.
+
+Notes:
+- Comments in the notebook note that learnable fusion significantly improves Dice compared to mean fusion.
+- This is configured as the default model when config.use_learnable_fusion=True.
+
+
+4) Loss Functions
+-----------------
+
+Main loss classes (Phase 5 – Losses):
+
+- DiceLoss3D:
+  - Computes soft Dice loss over 3D volumes.
+  - Supports multi-class Dice (classes 0–4).
+  - Often used per-class and averaged.
+
+- FocalLoss3D:
+  - Multi-class focal loss for 3D segmentation.
+  - Parameters:
+    - alpha: class weights vector (focal_alpha in TrainConfig: [0.1, 2.0, 2.0, 3.0, 3.0]).
+    - gamma: 2.0 (from config).
+  - Designed to handle class imbalance by focusing on hard examples.
+
+- CombinedLoss3D (Dice + Focal):
+  - Weighted combination:
+    - L = dice_weight * DiceLoss + focal_weight * FocalLoss.
+  - TrainConfig default:
+    - dice_weight = 0.4
+    - focal_weight = 0.6
+  - This combined loss is the primary training loss in the pipeline.
+
+Optional/ablative losses (for ablation studies):
+- Pure Dice loss.
+- Pure Focal loss.
+- Cross-Entropy loss (CE).
+- CombinedDice+Focal (default).
+
+
+5) Optimizer, Scheduler, and Training Mechanics
+-----------------------------------------------
+
+Optimizer:
+- AdamW:
+  - learning_rate: 3e-4
+  - weight decay set in the optimizer creation function (typical small value).
+- Configured via create_optimizer_and_scheduler.
+
+Scheduler:
+- CosineAnnealingLR with warmup:
+  - Warmup phases for initial epochs.
+  - Cosine decay over the remaining epochs.
+- Designed to stabilize early training and encourage convergence.
+
+Training loop features:
+- Automatic Mixed Precision (AMP):
+  - Uses torch.cuda.amp.autocast and GradScaler for mixed-precision training on GPUs.
+- Gradient Accumulation:
+  - gradient_accumulation_steps = 4.
+  - Simulates effectively larger batch sizes with small memory footprints.
+- Gradient Clipping:
+  - Clips gradients at norm 0.5 (gradient_clip in TrainConfig).
+- Early Stopping:
+  - Monitors validation metric (macro tumor Dice).
+  - Stops training when there is no improvement after a configured patience (in training utilities).
+- Checkpointing:
+  - best_model.pt (best validation macro tumor Dice).
+  - final_model.pt (final epoch state).
+  - Optional intermediate “milestone” checkpoints for debugging or ablation reuse.
+
+Multi-GPU:
+- DataParallel wrapping:
+  - If torch.cuda.device_count() > 1:
+    - model = nn.DataParallel(model).
+  - Applied in:
+    - create_model (main training model).
+    - FusionAblation.create_model.
+    - LossAblation.train_and_evaluate.
+    - ArchitectureAblation.create_model.
+- load_best_model:
+  - Handles state_dict keys with/without "module." prefix so that checkpoints work both with and without DataParallel.
+
+
+6) Data, Inputs, and Outputs
+----------------------------
+
+Inputs:
+- Modalities: 4 MRI channels per case:
+  - T1, T1ce, T2, FLAIR.
+- Patches:
+  - 3D patches of size (98, 98, 98), sampled with:
+    - tumor-centric sampling ratio = 0.8.
+    - class-aware sampling favoring minority tumor classes.
+
+Outputs:
+- 5-channel logits:
+  - Channel 0: background.
+  - Channel 1: necrosis.
+  - Channel 2: edema.
+  - Channel 3: non-enhancing tumor.
+  - Channel 4: enhancing tumor.
+
+Evaluation Metrics:
+- Per-class Dice (0–4).
+- Per-class IoU (0–4).
+- Macro tumor Dice (average over tumor classes 1–4).
+- BraTS-style WT/TC/ET:
+  - WT (Whole Tumor).
+  - TC (Tumor Core).
+  - ET (Enhancing Tumor).
+
+
+7) Ablation Modules (Model Variants)
+------------------------------------
+
+The notebook defines structured ablation classes to study the effect of fusion, loss functions, and architecture variants.
+
+FusionAblation:
+- Compares:
+  - Mean fusion ResUNet3D.
+  - Static weighted fusion.
+  - Learnable fusion (LearnableFusionResUNet3D).
+- Uses shared data loaders and training config.
+- Reports:
+  - Per-variant macro tumor Dice and other metrics.
+  - Plotting via plot_comparison and textual summaries via print_summary.
+
+LossAblation:
+- Compares different loss configurations:
+  - Dice only.
+  - Focal only.
+  - Combined Dice+Focal (default).
+  - Cross-Entropy.
+- For each loss:
+  - Trains/validates a ResUNet3D-based model with the same data and schedule.
+  - Stores final metrics and training curves.
+  - plot_comparison produces a figure of loss vs. performance.
+  - print_summary prints per-loss metrics and the best loss choice.
+
+ArchitectureAblation:
+- Compares multiple architectures:
+  - PlainUNet3D.
+  - Simple/Swin-inspired UNet3D.
+  - ResUNet3D with InstanceNorm.
+  - ResUNet3D with BatchNorm.
+- Each variant is instantiated with:
+  - Same patch size, base_filters, depth.
+  - Consistent loss and optimizer settings.
+- plot_comparison visualizes differences.
+- print_summary highlights the best-performing architecture.
+
+These ablations are orchestrated in Phase 9, where:
+- Best checkpoint is loaded.
+- Full evaluation and ablation runs are executed.
+- All results (metrics, plots, reports, ablation outputs) are exported under output_dir and aggregated via export_final_results.
+
+
+8) Exported Artifacts
+---------------------
+
+Export functions (Phase 8/9) save:
+
+- Model weights:
+  - state_dict-only file: models/<model_name>_state_dict.pt
+  - full model + config: models/<model_name>_full.pt
+
+- Metrics:
+  - CSV summary: performance_summary.csv
+  - JSON summary: results.json
+  - Metrics directory: output_dir/metrics
+
+- Training History:
+  - Pickled history (loss, Dice, LR, etc.) under output_dir/history.
+
+- Configuration:
+  - Serialized TrainConfig and runtime metadata under output_dir/reports.
+
+- Final Report:
+  - Text/Markdown summary tying together:
+    - model configuration,
+    - training/evaluation metrics,
+    - ablation results.
+
+Together, these components fully define the model, its training procedure, and its evaluation setup as implemented in Full_ResUnet3D_Pipeline.ipynb.

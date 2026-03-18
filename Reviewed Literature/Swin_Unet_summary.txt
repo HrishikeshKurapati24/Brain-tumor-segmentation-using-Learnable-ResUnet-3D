@@ -1,0 +1,67 @@
+Paper 1: Brain Tumor Segmentation Based on Improved Swin-UNet (Liao et al., 2023)
+
+Problem Statement
+
+Brain tumors, particularly malignant gliomas, pose significant health risks due to their recurrence and high mortality rate. Accurate and automated segmentation of brain tumors in MRI scans is crucial for clinical diagnosis and treatment planning. Traditional deep learning models like U-Net provide good spatial localization, but they often lack strong global context representation. The paper addresses this gap by improving Swin-UNet for brain tumor segmentation.
+
+⸻
+
+Proposed Method
+
+The authors introduce Swin-UNet-EPA, an enhanced version of Swin-UNet, which integrates:
+	•	Swin Transformer (Encoder): Captures both global and local contextual information by dividing the image into non-overlapping windows and applying cross-window self-attention.
+	•	U-Net (Decoder): Ensures precise spatial localization of tumor regions.
+	•	Efficient Paired Attention (EPA):
+	•	Combines spatial and channel attention.
+	•	Uses parameter sharing for Query, Key, and Value matrices, reducing computational complexity.
+	•	Balances attention weights across different spatial positions to avoid over-focusing on specific regions.
+
+This hybrid approach aims to preserve U-Net’s localization strength while leveraging Transformer-based global context modeling, with the EPA block enhancing feature representation efficiency.
+
+⸻
+
+Dataset
+	•	BraTS 2021 dataset
+	•	Training: 1000 samples
+	•	Validation: 125 samples
+	•	Test: 125 samples
+	•	Each case contains four MRI modalities: FLAIR, T1, T1ce, and T2 with resolution 240 × 240 × 155.
+
+⸻
+
+Evaluation Metrics
+	•	Dice Coefficient – measures overlap between predicted segmentation and ground truth (robust against data imbalance).
+	•	IoU (Intersection over Union) – measures region overlap accuracy.
+
+⸻
+
+Experimental results
+    Model               IoU                 Dice
+    U-Net               0.81                0.889
+    Swin-UNet           0.83                0.910
+    Swin-UNet-EPA       0.84                0.915
+
+    •	Swin-UNet outperforms U-Net in both IoU and Dice.
+	•	Adding EPA further boosts performance by effectively weighting key features.
+	•	Loss curves showed faster convergence and lower final loss for Swin-UNet-EPA.
+	•	Qualitative results indicated sharper and more accurate tumor boundary segmentation compared to U-Net.
+
+⸻
+
+Strengths
+	•	Improved Accuracy: EPA attention enhances feature extraction.
+	•	Balanced Global and Local Context: Swin Transformer handles large receptive fields, while U-Net ensures pixel-level accuracy.
+	•	Reduced Parameter Complexity in Attention: Sharing parameters lowers computation compared to traditional self-attention.
+
+⸻
+
+Limitations
+	•	Despite EPA optimization, the Transformer backbone still contains high parameter complexity, demanding significant computational resources.
+	•	The study focuses on 2D MRI slices, while 3D volumetric segmentation remains unexplored.
+	•	The model’s generalization on other datasets beyond BraTS is not evaluated.
+
+⸻
+
+Key Takeaway
+
+Swin-UNet-EPA demonstrates superior segmentation accuracy over U-Net and Swin-UNet by integrating Transformer-based global context, CNN-based localization, and a paired attention block. However, its computational demands and lack of 3D evaluation present areas for future research.

@@ -1,0 +1,6 @@
+Method, Performance
+Standard U-Net,61.0%-88.9%
+Multimodal Fusion U-Net,75.0%-75.0%
+Res-UNet,86.0%-90.6%(Dice after MFCL)(Explicit per class-dice haven't been reported)
+Swin-UNet-EPA,91.5%-91.5%(Uses binary dice coefficient and also trained on 3x training samples than our model)
+LearnableFusionResUNet3D (Ours),82.92%
