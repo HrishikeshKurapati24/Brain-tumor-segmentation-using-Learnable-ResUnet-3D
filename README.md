@@ -100,7 +100,7 @@ The easiest way to run the project is via the provided Jupyter Notebook:
 ---
 
 ## 📜 Acknowledgements
-- **Dataset**: Provided by the [BraTS 2015 Challenge]([http://braintumorsegmentation.org/](https://www.kaggle.com/datasets/hrishikeshkurapati/brats2015)).
+- **Dataset**: Provided by the [BraTS 2015 Challenge]([(https://www.kaggle.com/datasets/hrishikeshkurapati/brats2015]).
 - **Inspiration**: Building upon established works in U-Net, ResNet, and Swin-UNet architectures for medical imaging.
 
 ---
